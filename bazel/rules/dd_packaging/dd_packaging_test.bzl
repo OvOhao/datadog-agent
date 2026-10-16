@@ -774,6 +774,115 @@ def _test_packaged_data_pkg_files_collected(name):
 def _test_packaged_data_pkg_files_collected_impl(env, target):
     _outputs_of(env, target).contains_predicate(matching.file_basename_contains("empty.h"))
 
+# Test 16: mode sets the permissions of an unversioned input, such as a binary.
+def _test_mode(name):
+    util.helper_target(
+        cc_binary,
+        name = name + "_bin",
+        srcs = ["testdata/main.c"],
+    )
+    dd_cc_packaged(
+        name = name + "_packaged",
+        dest_dir = "embedded/bin",
+        input = ":" + name + "_bin",
+        mode = "0755",
+    )
+    util.helper_target(
+        dd_collect_dependencies,
+        name = name + "_subject",
+        srcs = [":" + name + "_packaged"],
+    )
+    analysis_test(
+        name = name,
+        impl = _test_mode_impl,
+        target = name + "_subject",
+    )
+
+def _test_mode_impl(env, target):
+    env.expect.that_dict(_installed_modes(target)).contains_at_least({"embedded/bin/test_mode_bin": "0755"})
+
+# Test 17: mode applies to the library file of a versioned input, not to its
+# symlinks, which keep their mode.
+def _test_versioned_mode(name):
+    util.helper_target(
+        cc_library,
+        name = name + "_lib",
+        srcs = ["testdata/empty.c"],
+    )
+    util.helper_target(
+        cc_shared_library,
+        name = name + "_so",
+        deps = [":" + name + "_lib"],
+    )
+    dd_cc_packaged(
+        name = name + "_packaged",
+        input = ":" + name + "_so",
+        libname = "libfoo",
+        mode = "0755",
+        version = "1.2",
+    )
+    util.helper_target(
+        dd_collect_dependencies,
+        name = name + "_subject",
+        srcs = [":" + name + "_packaged"],
+    )
+    analysis_test(
+        name = name,
+        impl = _test_versioned_mode_impl,
+        target = name + "_subject",
+    )
+
+def _test_versioned_mode_impl(env, target):
+    env.expect.that_collection(_installed_modes(target).values()).contains_exactly(["0755"])
+    env.expect.that_bool(_all_symlinks_have_mode(target, "0644")).equals(True)
+
+# Test 18: without mode, a versioned input and its symlinks keep the 0644 mode
+# existing packages are built with.
+def _test_versioned_default_mode(name):
+    util.helper_target(
+        cc_library,
+        name = name + "_lib",
+        srcs = ["testdata/empty.c"],
+    )
+    util.helper_target(
+        cc_shared_library,
+        name = name + "_so",
+        deps = [":" + name + "_lib"],
+    )
+    dd_cc_packaged(
+        name = name + "_packaged",
+        input = ":" + name + "_so",
+        libname = "libfoo",
+        version = "1.2",
+    )
+    util.helper_target(
+        dd_collect_dependencies,
+        name = name + "_subject",
+        srcs = [":" + name + "_packaged"],
+    )
+    analysis_test(
+        name = name,
+        impl = _test_versioned_default_mode_impl,
+        target = name + "_subject",
+    )
+
+def _test_versioned_default_mode_impl(env, target):
+    env.expect.that_collection(_installed_modes(target).values()).contains_exactly(["0644"])
+    env.expect.that_bool(_all_symlinks_have_mode(target, "0644")).equals(True)
+
+def _installed_modes(target):
+    return {
+        dest: files.attributes.get("mode")
+        for files, _ in target[PackageFilegroupInfo].pkg_files
+        for dest in files.dest_src_map
+    }
+
+def _all_symlinks_have_mode(target, mode):
+    return all([
+        link.attributes.get("mode") == mode
+        for link, _ in target[PackageFilegroupInfo].pkg_symlinks
+    ])
+
 # ── Suite ────────────────────────────────────────────────────────────────────
 
 def dd_packaging_test_suite(name):
@@ -795,5 +904,8 @@ def dd_packaging_test_suite(name):
             _test_data_reaches_packaged,
             _test_packaged_data_collected,
             _test_packaged_data_pkg_files_collected,
+            _test_mode,
+            _test_versioned_mode,
+            _test_versioned_default_mode,
         ],
     )
