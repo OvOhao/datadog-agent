@@ -97,6 +97,26 @@ func (at *ActivityTree) AddBaseMountNamespaceID(imageTagID uint64, nsID uint32) 
 		at.baseMountNamespaceIDs[imageTagID] = ids
 	}
 	ids[nsID]++
+	at.ClaimMountNamespaceSeed(imageTagID, nsID)
+}
+
+func (at *ActivityTree) ClaimMountNamespaceSeed(imageTagID uint64, nsID uint32) bool {
+	if nsID == 0 || imageTagID == 0 {
+		return false
+	}
+	if at.seededMountNamespaceIDs == nil {
+		at.seededMountNamespaceIDs = make(map[uint64]map[uint32]struct{})
+	}
+	ids := at.seededMountNamespaceIDs[imageTagID]
+	if ids == nil {
+		ids = make(map[uint32]struct{})
+		at.seededMountNamespaceIDs[imageTagID] = ids
+	}
+	if _, ok := ids[nsID]; ok {
+		return false
+	}
+	ids[nsID] = struct{}{}
+	return true
 }
 
 // RemoveBaseMountNamespaceID drops a reference to nsID as a base mount namespace for imageTagID.

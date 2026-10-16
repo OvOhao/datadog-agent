@@ -128,3 +128,37 @@ func TestProfile_PinBaseMountNamespace(t *testing.T) {
 			"a released cgroup must be pinnable again")
 	})
 }
+
+func TestProfile_ClaimMountNamespaceSeed(t *testing.T) {
+	t.Run("zero namespace is never claimed", func(t *testing.T) {
+		p := newPinTestProfile()
+		assert.False(t, p.ClaimMountNamespaceSeed(0, "img:v1"))
+	})
+
+	t.Run("claims a foreign namespace once per image tag without marking it as base", func(t *testing.T) {
+		p := newPinTestProfile()
+		require.True(t, p.PinBaseMountNamespace(testCgroupA, testNsA, true, "img:v1"))
+
+		assert.False(t, p.ClaimMountNamespaceSeed(testNsA, "img:v1"),
+			"a namespace already pinned as base must not be seeded again")
+		assert.True(t, p.ClaimMountNamespaceSeed(testNsB, "img:v1"),
+			"a foreign namespace entered via setns should be seeded on first observation")
+		assert.False(t, p.ClaimMountNamespaceSeed(testNsB, "img:v1"),
+			"the same foreign namespace must not be seeded twice for the same tag")
+		assert.True(t, p.ClaimMountNamespaceSeed(testNsB, "img:v2"),
+			"another image tag should still seed the namespace")
+
+		assert.True(t, insertMountIn(t, p, testNsA, "/in-base"))
+		assert.False(t, insertMountIn(t, p, testNsB, "/in-foreign"),
+			"claiming a foreign namespace for seeding must not mark it as a base namespace")
+	})
+
+	t.Run("evicting an image tag clears its claimed namespaces", func(t *testing.T) {
+		p := newPinTestProfile()
+		require.True(t, p.ClaimMountNamespaceSeed(testNsB, "img:v1"))
+		p.ActivityTree.EvictImageTag("img:v1")
+
+		assert.True(t, p.ClaimMountNamespaceSeed(testNsB, "img:v2"),
+			"reusing the freed tag slot must not inherit claimed namespaces from the evicted tag")
+	})
+}

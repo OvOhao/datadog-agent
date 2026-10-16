@@ -404,6 +404,17 @@ func (p *Profile) RemoveBaseMountNamespace(cgroupInode uint64) {
 	p.ActivityTree.RemoveBaseMountNamespaceID(pin.imageTagID, pin.nsID)
 }
 
+func (p *Profile) ClaimMountNamespaceSeed(nsID uint32, imageTag string) bool {
+	p.Lock()
+	defer p.Unlock()
+
+	if nsID == 0 {
+		return false
+	}
+	imageTagID := p.ActivityTree.GetOrInsertImageTag(imageTag)
+	return p.ActivityTree.ClaimMountNamespaceSeed(imageTagID, nsID)
+}
+
 // InsertMount inserts a mount into the profile's deduplicated mount table
 func (p *Profile) InsertMount(mnt *model.Mount, imageTag string, generationType activity_tree.NodeGenerationType, timestamp time.Time) bool {
 	p.Lock()

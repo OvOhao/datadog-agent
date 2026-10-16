@@ -1198,12 +1198,25 @@ func baseMountNamespaceFromEvent(event *model.Event) (uint32, bool) {
 		return root.Process.MntNS, true
 	}
 
+	if activity_tree.IsContainerRuntime(pc) {
+		return 0, false
+	}
+
 	return pc.Process.MntNS, false
 }
 
+func processMountNamespaceFromEvent(event *model.Event) uint32 {
+	pc := event.ProcessContext
+	if pc == nil || activity_tree.IsContainerRuntime(pc) {
+		return 0
+	}
+	return pc.Process.MntNS
+}
+
 // seedMountsForWorkload seeds a profile's mount table with the workload's
-// pre-existing mounts from its base mount namespace. Later changes come from
-// live mount events.
+// pre-existing mounts from its base mount namespace and any non-base mount
+// namespace entered by the event's process. Later changes come from live mount
+// events.
 func (m *ManagerV2) seedMountsForWorkload(secprof *profile.Profile, workload *tags.Workload, event *model.Event) {
 	if workload == nil {
 		return
@@ -1214,17 +1227,24 @@ func (m *ManagerV2) seedMountsForWorkload(secprof *profile.Profile, workload *ta
 		imageTag = "latest"
 	}
 
-	nsID, authoritative := baseMountNamespaceFromEvent(event)
-	if nsID == 0 || !secprof.PinBaseMountNamespace(workload.GCroupCacheEntry.GetCGroupInode(), nsID, authoritative, imageTag) {
-		return
+	pid := event.ProcessContext.Process.Pid
+
+	baseNsID, authoritative := baseMountNamespaceFromEvent(event)
+	if baseNsID != 0 && secprof.PinBaseMountNamespace(workload.GCroupCacheEntry.GetCGroupInode(), baseNsID, authoritative, imageTag) {
+		m.seedMountNamespace(secprof, baseNsID, pid, imageTag)
 	}
 
+	if procNsID := processMountNamespaceFromEvent(event); procNsID != 0 && secprof.ClaimMountNamespaceSeed(procNsID, imageTag) {
+		m.seedMountNamespace(secprof, procNsID, pid, imageTag)
+	}
+}
+
+func (m *ManagerV2) seedMountNamespace(secprof *profile.Profile, nsID uint32, pid uint32, imageTag string) {
 	var mounts []model.Mount
 	m.resolvers.MountResolver.IterateNamespace(nsID, func(mnt *model.Mount) {
 		mounts = append(mounts, *mnt)
 	})
 
-	pid := event.ProcessContext.Process.Pid
 	maxSize := int64(m.config.RuntimeSecurity.SecurityProfileV2MaxDumpSize())
 	now := time.Now()
 	for i := range mounts {

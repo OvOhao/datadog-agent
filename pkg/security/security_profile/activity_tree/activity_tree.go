@@ -198,7 +198,8 @@ type ActivityTree struct {
 	Mounts     []*MountNode
 	mountIndex map[mountNodeKey]*MountNode
 
-	baseMountNamespaceIDs map[uint64]map[uint32]int
+	baseMountNamespaceIDs   map[uint64]map[uint32]int
+	seededMountNamespaceIDs map[uint64]map[uint32]struct{}
 
 	imageTagIDs []imageTagEntry
 }
@@ -218,15 +219,16 @@ func NewActivityTree(validator Owner, pathsReducer *PathsReducer, treeType strin
 	cache, _ := simplelru.NewLRU[cookieSelector, *ProcessNode](CookieToProcessNodeCacheSize, nil)
 
 	return &ActivityTree{
-		treeType:              treeType,
-		validator:             validator,
-		pathsReducer:          pathsReducer,
-		Stats:                 NewActivityTreeNodeStats(),
-		CookieToProcessNode:   cache,
-		SyscallsMask:          make(map[int]int),
-		DNSNames:              utils.NewStringKeys(nil),
-		baseMountNamespaceIDs: make(map[uint64]map[uint32]int),
-		mountIndex:            make(map[mountNodeKey]*MountNode),
+		treeType:                treeType,
+		validator:               validator,
+		pathsReducer:            pathsReducer,
+		Stats:                   NewActivityTreeNodeStats(),
+		CookieToProcessNode:     cache,
+		SyscallsMask:            make(map[int]int),
+		DNSNames:                utils.NewStringKeys(nil),
+		baseMountNamespaceIDs:   make(map[uint64]map[uint32]int),
+		seededMountNamespaceIDs: make(map[uint64]map[uint32]struct{}),
+		mountIndex:              make(map[mountNodeKey]*MountNode),
 	}
 }
 
@@ -598,9 +600,24 @@ func isContainerRuntimePrefix(basename string) bool {
 	return strings.HasPrefix(basename, "runc") || strings.HasPrefix(basename, "containerd-shim")
 }
 
+func IsContainerRuntime(entry *model.ProcessContext) bool {
+	if entry == nil {
+		return false
+	}
+	if isContainerRuntimePrefix(entry.FileEvent.BasenameStr) {
+		return true
+	}
+	if entry.FileEvent.IsFileless() {
+		if ancestor := GetNextAncestorBinaryOrArgv0(entry); ancestor != nil && isContainerRuntimePrefix(ancestor.FileEvent.BasenameStr) {
+			return true
+		}
+	}
+	return false
+}
+
 // FindRootProcess returns the process this entry would be rooted on in the tree
-// (walking ancestors with GetNextAncestorBinaryOrArgv0 and skipping container
-// runtime processes via isValidRootNode), or nil if there is none.
+// (walking ancestors and skipping container runtime processes via isValidRootNode),
+// or nil if there is none.
 //
 // The walk stops at the workload boundary: ancestors outside the entry's
 // container (e.g. the host container runtime) are not eligible as the root.
@@ -615,11 +632,10 @@ func FindRootProcess(entry *model.ProcessContext) *model.ProcessContext {
 			break
 		}
 		branch = append(branch, cur)
-		ancestor := GetNextAncestorBinaryOrArgv0(cur)
-		if ancestor == nil {
+		if cur.Ancestor == nil || cur.Ancestor.FileEvent.Inode == 0 {
 			break
 		}
-		cur = &ancestor.ProcessContext
+		cur = &cur.Ancestor.ProcessContext
 	}
 
 	for i := len(branch) - 1; i >= 0; i-- {
@@ -1174,6 +1190,7 @@ func (at *ActivityTree) EvictImageTag(imageTag string) {
 	at.Mounts = newMounts
 
 	delete(at.baseMountNamespaceIDs, imageTagID)
+	delete(at.seededMountNamespaceIDs, imageTagID)
 	at.removeImageTag(imageTag)
 	at.Stats.SizeBytes -= removedBytes
 }
