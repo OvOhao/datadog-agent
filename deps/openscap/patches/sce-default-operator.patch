@@ -1,0 +1,12 @@
+--- a/src/SCE/sce_engine.c
++++ b/src/SCE/sce_engine.c
+@@ -584,6 +584,9 @@
+ 			}
+ 		}
+ 		xccdf_operator_t operator = xccdf_value_binding_get_operator(binding);
++		/* no operator attribute: XCCDF defaults to equals */
++		if (operator == 0)
++			operator = XCCDF_OPERATOR_EQUALS;
+ 
+ 		char* type_str;
+ 		switch (type)
