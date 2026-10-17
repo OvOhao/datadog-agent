@@ -1,0 +1,159 @@
+--- a/src/OVAL/probes/probe-table.c
++++ b/src/OVAL/probes/probe-table.c
+@@ -263,7 +263,7 @@
+ 	{OVAL_LINUX_IFLISTENERS, NULL, iflisteners_probe_main, NULL, NULL},
+ #endif
+ #ifdef OPENSCAP_PROBE_LINUX_INETLISTENINGSERVERS
+-	{OVAL_LINUX_INET_LISTENING_SERVERS, NULL, inetlisteningservers_probe_main, NULL, NULL},
++	{OVAL_LINUX_INET_LISTENING_SERVERS, NULL, inetlisteningservers_probe_main, NULL, inetlisteningservers_probe_offline_mode_supported},
+ #endif
+ #ifdef OPENSCAP_PROBE_LINUX_PARTITION
+ 	{OVAL_LINUX_PARTITION, NULL, partition_probe_main, NULL, patition_probe_offline_mode_supported},
+--- a/src/OVAL/probes/unix/linux/inetlisteningservers_probe.c
++++ b/src/OVAL/probes/unix/linux/inetlisteningservers_probe.c
+@@ -55,6 +55,8 @@
+ #include <stdio_ext.h>
+ #include <errno.h>
+ #include <dirent.h>
++#include <limits.h>
++#include <unistd.h>
+ #include <fcntl.h>
+ #include <netdb.h>
+ #include <arpa/inet.h>
+@@ -62,6 +64,7 @@
+ 
+ #include "_seap.h"
+ #include "probe-api.h"
++#include "probe/probe.h"
+ #include "probe/entcmp.h"
+ #include "common/debug_priv.h"
+ #include "inetlisteningservers_probe.h"
+@@ -171,19 +174,21 @@
+ 	return NULL;
+ }
+ 
+-static int collect_process_info(llist *l)
++static int collect_process_info(llist *l, const char *root)
+ {
+ 	DIR *d, *f;
+ 	struct dirent *ent;
++	char proc[PATH_MAX];
+ 
+-	d = opendir("/proc");
++	snprintf(proc, sizeof(proc), "%s/proc", root);
++	d = opendir(proc);
+ 	if (d == NULL)
+ 		return 1;
+ 
+ 	while (( ent = readdir(d) )) {
+ 		FILE *sf;
+ 		int pid, ppid;
+-		char buf[100];
++		char buf[PATH_MAX];
+ 		char *tmp, cmd[16], state, *text = NULL;
+ 		int fd, len, euid = 0;
+ 
+@@ -196,7 +201,7 @@
+ 			continue;
+ 
+ 		// Parse up the stat file for the proc
+-		snprintf(buf, 32, "/proc/%d/stat", pid);
++		snprintf(buf, sizeof(buf), "%s/proc/%d/stat", root, pid);
+ 		fd = open(buf, O_RDONLY, 0);
+ 		if (fd < 0)
+ 			continue;
+@@ -219,7 +224,7 @@
+ 			continue;
+ 
+ 		// Get the effective uid
+-		snprintf(buf, 32, "/proc/%d/status", pid);
++		snprintf(buf, sizeof(buf), "%s/proc/%d/status", root, pid);
+ 		sf = fopen(buf, "rt");
+ 		if (sf) {
+ 			int line = 0;
+@@ -240,7 +245,7 @@
+ 		}
+ 
+ 		// Now lets get the inodes each process has open
+-		snprintf(buf, 32, "/proc/%d/fd", pid);
++		snprintf(buf, sizeof(buf), "%s/proc/%d/fd", root, pid);
+ 		f = opendir(buf);
+ 		if (f == NULL) {
+ 			// Process might have ended or we don;t have access - ignore it
+@@ -581,9 +586,27 @@
+ 		goto cleanup;
+ 	}
+ 
++	/*
++	 * /proc/net lists the sockets of the reading process's network
++	 * namespace, so under a probe root read those of the root's init.
++	 */
++	const char *root = getenv("OSCAP_PROBE_ROOT");
++	if (root == NULL)
++		root = "";
++	const char *net = *root != '\0' ? "/proc/1/net" : "/proc/net";
++	char path[PATH_MAX];
++	if (*root != '\0') {
++		snprintf(path, sizeof(path), "%s%s/tcp", root, net);
++		if (access(path, R_OK) != 0) {
++			probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_NOT_APPLICABLE);
++			err = 0;
++			goto cleanup;
++		}
++	}
++
+ 	// Now start collecting the info
+ 	list_create(&ll);
+-	if (collect_process_info(&ll)) {
++	if (collect_process_info(&ll, root)) {
+ 		SEXP_t *msg;
+ 
+ 		msg = probe_msg_creat(OVAL_MESSAGE_LEVEL_ERROR, "Permission error.");
+@@ -596,17 +619,23 @@
+ 	}
+ 
+ 	// Now we check the tcp socket list...
+-	read_tcp("/proc/net/tcp", "tcp", &ll, ctx, req);
+-	read_tcp("/proc/net/tcp6", "tcp", &ll, ctx, req);
++	snprintf(path, sizeof(path), "%s%s/tcp", root, net);
++	read_tcp(path, "tcp", &ll, ctx, req);
++	snprintf(path, sizeof(path), "%s%s/tcp6", root, net);
++	read_tcp(path, "tcp", &ll, ctx, req);
+ 
+ 	// Next udp sockets...
+-	read_udp("/proc/net/udp", "udp", &ll, ctx, req);
+-	read_udp("/proc/net/udp6", "udp", &ll, ctx, req);
++	snprintf(path, sizeof(path), "%s%s/udp", root, net);
++	read_udp(path, "udp", &ll, ctx, req);
++	snprintf(path, sizeof(path), "%s%s/udp6", root, net);
++	read_udp(path, "udp", &ll, ctx, req);
+ 
+ 	// Next, raw sockets...not exactly part of standard yet. They
+ 	// can be used to send datagrams, so we will pretend they are udp
+-	read_raw("/proc/net/raw", "udp", &ll, ctx, req);
+-	read_raw("/proc/net/raw6", "udp", &ll, ctx, req);
++	snprintf(path, sizeof(path), "%s%s/raw", root, net);
++	read_raw(path, "udp", &ll, ctx, req);
++	snprintf(path, sizeof(path), "%s%s/raw6", root, net);
++	read_raw(path, "udp", &ll, ctx, req);
+ 
+ 	list_clear(&ll);
+ 
+@@ -619,3 +648,8 @@
+ 
+ 	return err;
+ }
++
++int inetlisteningservers_probe_offline_mode_supported(void)
++{
++	return PROBE_OFFLINE_OWN;
++}
+--- a/src/OVAL/probes/unix/linux/inetlisteningservers_probe.h
++++ b/src/OVAL/probes/unix/linux/inetlisteningservers_probe.h
+@@ -26,5 +26,6 @@
+ #include "probe-api.h"
+ 
+ int inetlisteningservers_probe_main(probe_ctx *ctx, void *arg);
++int inetlisteningservers_probe_offline_mode_supported(void);
+ 
+ #endif /* OPENSCAP_INETLISTENINGSERVERS_PROBE_H */
