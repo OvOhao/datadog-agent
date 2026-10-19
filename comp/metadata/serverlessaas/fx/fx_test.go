@@ -7,6 +7,8 @@ package fx
 
 import (
 	"context"
+	"slices"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -27,12 +29,21 @@ import (
 
 type recordingSerializer struct {
 	serializer.MetricSerializer
+	mu       sync.Mutex
 	payloads []*inventorypayload.Payload
 }
 
 func (s *recordingSerializer) SendMetadata(payload marshaler.JSONMarshaler) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.payloads = append(s.payloads, payload.(*inventorypayload.Payload))
 	return nil
+}
+
+func (s *recordingSerializer) snapshot() []*inventorypayload.Payload {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.payloads)
 }
 
 type fakeHostname struct{ hostnameinterface.Component }
@@ -96,27 +107,29 @@ func TestScopedRunner(t *testing.T) {
 					}),
 				)
 				require.NoError(t, app.Err())
-				require.Empty(t, s.payloads, "construction must not submit")
+				require.Empty(t, s.snapshot(), "construction must not submit")
 				require.NoError(t, app.Start(t.Context()))
 				synctest.Wait()
 				require.False(t, rootConfig.GetBool("enable_metadata_collection"), "the override must not escape the AAS scope")
 				require.Equal(t, tc.inventory, rootConfig.GetBool("inventories_enabled"))
 				if tc.wantReport {
-					require.Len(t, s.payloads, 1)
-					require.Equal(t, "serverless-extension", s.payloads[0].Metadata["flavor"])
-					require.Equal(t, "/subscriptions/sub-123/resourcegroups/test-rg/providers/microsoft.web/sites/test-app", s.payloads[0].Metadata["resource_id"])
+					payloads := s.snapshot()
+					require.Len(t, payloads, 1)
+					require.Equal(t, "serverless-extension", payloads[0].Metadata["flavor"])
+					require.Equal(t, "/subscriptions/sub-123/resourcegroups/test-rg/providers/microsoft.web/sites/test-app", payloads[0].Metadata["resource_id"])
 					time.Sleep(10 * time.Minute) // Advance virtual time to the next report.
 					synctest.Wait()
-					require.Len(t, s.payloads, 2)
-					require.Equal(t, "periodic", s.payloads[1].Metadata["report_reason"])
+					payloads = s.snapshot()
+					require.Len(t, payloads, 2)
+					require.Equal(t, "periodic", payloads[1].Metadata["report_reason"])
 				} else {
-					require.Empty(t, s.payloads)
+					require.Empty(t, s.snapshot())
 				}
 				require.NoError(t, app.Stop(t.Context()))
-				count := len(s.payloads)
+				count := len(s.snapshot())
 				time.Sleep(20 * time.Minute) // Virtual time: a stopped runner must not report again.
 				synctest.Wait()
-				require.Len(t, s.payloads, count)
+				require.Len(t, s.snapshot(), count)
 			})
 		})
 	}
