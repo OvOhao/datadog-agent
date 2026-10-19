@@ -62,6 +62,15 @@ class TestValidateYAML(unittest.TestCase):
             mock_manifest = yaml.safe_load(mock_file)
             self.assertEqual(validate_manifest(mock_manifest), [])
 
+    def test_stable_component_version(self):
+        with open("./tasks/unit_tests/testdata/collector/valid_datadog_manifest.yaml") as mock_file:
+            mock_manifest = yaml.safe_load(mock_file)
+            for component in mock_manifest["processors"]:
+                if "k8sattributesprocessor" in component["gomod"]:
+                    component["gomod"] = component["gomod"].rsplit(" ", 1)[0] + " v1.2.0"
+                    break
+            self.assertEqual(validate_manifest(mock_manifest), [])
+
     def test_outdated_version(self):
         with open("./tasks/unit_tests/testdata/collector/outdated_version_manifest.yaml") as mock_file:
             mock_manifest = yaml.safe_load(mock_file)
