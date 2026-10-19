@@ -17,7 +17,7 @@ require (
 	github.com/vektra/mockery/v3 v3.8.1
 	github.com/wadey/gocovmerge v0.0.0-20160331181800-b5bfa59ec0ad
 	golang.org/x/perf v0.0.0-20250909190841-7e13e04d9366
-	golang.org/x/tools v0.51.0
+	golang.org/x/tools v0.52.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.6.2
 	gotest.tools/gotestsum v1.13.0
 )
@@ -170,7 +170,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.1 // indirect
 	github.com/knadh/koanf/providers/posflag v1.0.1 // indirect
 	github.com/knadh/koanf/providers/structs v1.0.0 // indirect
-	github.com/knadh/koanf/v2 v2.3.6 // indirect
+	github.com/knadh/koanf/v2 v2.3.8 // indirect
 	github.com/kulti/thelper v0.7.1 // indirect
 	github.com/kunwardeep/paralleltest v1.0.15 // indirect
 	github.com/ldez/exptostd v0.4.5 // indirect
@@ -284,7 +284,7 @@ require (
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260924152758-ed294f943157 // indirect
+	golang.org/x/telemetry v0.0.0-20261009151841-97e8ea77aa2a // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
