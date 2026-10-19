@@ -31,15 +31,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 )
 
-// File and directory permitions.
+// File and directory permissions. Log files are readable by their owner and
+// group only, as the CIS Benchmarks require of the files under /var/log.
 const (
-	defaultFilePermissions      = 0666
+	defaultFilePermissions      = 0640
 	defaultDirectoryPermissions = 0767
 )
 
@@ -176,6 +178,14 @@ func (rw *rollingFileWriter) createFileAndFolderIfNeeded() error {
 		rw.currentFile.Close()
 		rw.currentFile = nil
 		return err
+	}
+
+	// A file that an earlier version created keeps its mode when opened, so
+	// take away the permissions beyond defaultFilePermissions.
+	if perm := stat.Mode().Perm(); runtime.GOOS != "windows" && perm&^defaultFilePermissions != 0 {
+		if err := rw.currentFile.Chmod(perm & defaultFilePermissions); err != nil {
+			fmt.Fprintf(os.Stderr, "log: filewriter internal error: %v\n", err)
+		}
 	}
 
 	rw.currentFileSize = stat.Size()

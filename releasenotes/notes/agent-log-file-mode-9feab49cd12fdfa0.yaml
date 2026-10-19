@@ -1,0 +1,11 @@
+---
+security:
+  - |
+    The Agent creates its log files with mode 0640 instead of 0644, and takes
+    the read permission of other users away from a log file that an earlier
+    version created. The CIS Benchmarks require mode 0640 or stricter for the
+    files under /var/log.
+upgrade:
+  - |
+    Reading the Agent log files now takes root or membership in the group that
+    owns them, dd-agent for the files of the Agent run as dd-agent.
