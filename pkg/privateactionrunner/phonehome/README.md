@@ -60,7 +60,10 @@ resolved secrets, environment, hostname, user/filesystem and an absolute identit
 path. Extra PAR config, OPMS headers and live key/site rotation are unsupported.
 Different RC API keys, legacy RC credentials and mismatched sites are rejected;
 startup key/endpoints are fixed for each component lifetime. Paired loopback
-endpoints are allowed only in explicit internal mock mode.
+endpoints are allowed only in explicit internal mock mode. Windows ignores the
+opt-in: no discovery worker or POC controller is registered and ordinary PAR
+enrollment remains unchanged. POSIX storage/integration tests run on non-Windows
+platforms; Windows tests verify the opt-in is inert.
 
 Set absolute `DD_PM_SOCKET_PATH`. Register `datadog-agent-par-control` and
 `datadog-agent-action-executor` with `auto_start: false`, `restart: never`; executor
@@ -132,5 +135,5 @@ These fixtures also provide a Linux-local reproduction without live credentials
 or service changes. This session validates on macOS; real Linux process/RSS,
 wall-clock cadence and grant latency remain unmeasured. Production follow-ups:
 packaging, config rotation, backend recovery contracts, crash durability, cleanup,
-revocation, AAA capacity and other platforms. Release notes remain pending by request;
-local tests do not establish remote CI success.
+revocation, AAA capacity and other platforms. Each stack slice includes a release
+note; local tests do not establish remote CI success.

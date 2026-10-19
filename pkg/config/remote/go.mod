@@ -6,6 +6,7 @@ require (
 	github.com/DataDog/datadog-agent/comp/core/flare/types v0.77.2
 	github.com/DataDog/datadog-agent/pkg/config/mock v0.72.0-rc.5
 	github.com/DataDog/datadog-agent/pkg/config/model v0.77.2
+	github.com/DataDog/datadog-agent/pkg/config/utils v0.0.0-00010101000000-000000000000
 	github.com/DataDog/datadog-agent/pkg/proto v0.72.0-rc.5
 	github.com/DataDog/datadog-agent/pkg/remoteconfig/state v0.67.0
 	github.com/DataDog/datadog-agent/pkg/trace/log v0.77.0-devel.0.20260211235139-a5361978c2b6

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,7 +46,7 @@ type parScopePoller struct {
 }
 
 func newPARScopePoller(cfg model.Reader, clk clock.Clock, status func() *pbgo.OrgStatusResponse, demand *atomic.Bool) *parScopePoller {
-	if os.Getenv("DD_PAR_PHONE_HOME_POC") != "true" || !cfg.GetBool("private_action_runner.enabled") {
+	if runtime.GOOS == "windows" || os.Getenv("DD_PAR_PHONE_HOME_POC") != "true" || !cfg.GetBool("private_action_runner.enabled") {
 		return nil
 	}
 	key, endpoint, rcEndpoint, compatible := parDiscoveryConfig(cfg)

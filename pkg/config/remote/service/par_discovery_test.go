@@ -10,11 +10,30 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 	"time"
 
+	configmock "github.com/DataDog/datadog-agent/pkg/config/mock"
+	"github.com/benbjohnson/clock"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDiscoveryOptInPlatform(t *testing.T) {
+	t.Setenv("DD_INTERNAL_PAR_USE_DD_URL_FOR_OPMS", "false")
+	cfg := configmock.New(t)
+	cfg.SetInTest("api_key", "scope-test-key")
+	cfg.SetInTest("private_action_runner.enabled", true)
+	cfg.SetInTest("dd_url", "https://api.datadoghq.com")
+	cfg.SetInTest("remote_configuration.rc_dd_url", "https://config.datadoghq.com")
+	_, _, _, compatible := parDiscoveryConfig(cfg)
+	require.True(t, compatible)
+	t.Setenv("DD_PAR_PHONE_HOME_POC", "true")
+	poller := newPARScopePoller(cfg, clock.NewMock(), nil, nil)
+	require.Equal(t, runtime.GOOS == "windows", poller == nil)
+	t.Setenv("DD_PAR_PHONE_HOME_POC", "false")
+	require.Nil(t, newPARScopePoller(cfg, clock.NewMock(), nil, nil))
+}
 
 func TestDiscovery(t *testing.T) {
 	for _, tc := range []struct {
